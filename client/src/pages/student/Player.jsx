@@ -152,7 +152,14 @@ const Player = ({ }) => {
                       <div className="flex items-center justify-between w-full text-gray-800 text-xs md:text-default">
                         <p>{lecture.lectureTitle}</p>
                         <div className='flex gap-2'>
-                          {lecture.lectureUrl && <p onClick={() => setPlayerData({ ...lecture, chapter: index + 1, lecture: i + 1 })} className='text-blue-500 cursor-pointer'>Watch</p>}
+                          {lecture.lectureUrl && <p onClick={() => {
+                            const videoId = lecture.lectureUrl.includes('youtube.com/watch?v=') 
+                              ? lecture.lectureUrl.split('v=')[1]?.split('&')[0]
+                              : lecture.lectureUrl.includes('youtu.be/') 
+                                ? lecture.lectureUrl.split('/').pop()?.split('?')[0]
+                                : lecture.lectureUrl.split('/').pop();
+                            setPlayerData({ ...lecture, videoId, chapter: index + 1, lecture: i + 1 });
+                          }} className='text-blue-500 cursor-pointer hover:underline'>Watch</p>}
                           <p>{humanizeDuration(lecture.lectureDuration * 60 * 1000, { units: ['h', 'm'] })}</p>
                         </div>
                       </div>
@@ -176,7 +183,17 @@ const Player = ({ }) => {
           playerData
             ? (
               <div>
-                <YouTube iframeClassName='w-full aspect-video' videoId={playerData.lectureUrl.split('/').pop()} />
+                <YouTube 
+                  iframeClassName='w-full aspect-video' 
+                  videoId={playerData.videoId || playerData.lectureUrl?.split('/').pop()} 
+                  opts={{
+                    playerVars: {
+                      autoplay: 1,
+                      modestbranding: 1,
+                      rel: 0
+                    }
+                  }}
+                />
                 <div className='flex justify-between items-center mt-1'>
                   <p className='text-xl '>{playerData.chapter}.{playerData.lecture} {playerData.lectureTitle}</p>
                   <button onClick={() => markLectureAsCompleted(playerData.lectureId)} className='text-blue-600'>{progressData && progressData.lectureCompleted.includes(playerData.lectureId) ? 'Completed' : 'Mark Complete'}</button>

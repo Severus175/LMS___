@@ -73,9 +73,11 @@ export const purchaseCourse = async (req, res) => {
             cancel_url: `${origin}/`,
             line_items: line_items,
             mode: 'payment',
+            payment_method_types: ['card'],
             metadata: {
                 purchaseId: newPurchase._id.toString()
-            }
+            },
+            expires_at: Math.floor(Date.now() / 1000) + (30 * 60) // 30 minutes expiry
         })
 
         res.json({ success: true, session_url: session.url });

@@ -84,47 +84,81 @@ export const stripeWebhooks = async (request, response) => {
 
   // Handle the event
   switch (event.type) {
-    case 'payment_intent.succeeded': {
+    case 'checkout.session.completed': {
 
-      const paymentIntent = event.data.object;
-      const paymentIntentId = paymentIntent.id;
+      const session = event.data.object;
+      const { purchaseId } = session.metadata;
 
-      // Getting Session Metadata
-      const session = await stripeInstance.checkout.sessions.list({
-        payment_intent: paymentIntentId,
-      });
+      try {
+        const purchaseData = await Purchase.findById(purchaseId);
+        if (!purchaseData) {
+          console.error('Purchase not found:', purchaseId);
+          break;
+        }
 
-      const { purchaseId } = session.data[0].metadata;
+        const userData = await User.findById(purchaseData.userId);
+        const courseData = await Course.findById(purchaseData.courseId.toString());
 
-      const purchaseData = await Purchase.findById(purchaseId)
-      const userData = await User.findById(purchaseData.userId)
-      const courseData = await Course.findById(purchaseData.courseId.toString())
+        if (!userData || !courseData) {
+          console.error('User or Course not found');
+          break;
+        }
 
-      courseData.enrolledStudents.push(userData)
-      await courseData.save()
+        // Check if user is already enrolled
+        if (!courseData.enrolledStudents.includes(userData._id)) {
+          courseData.enrolledStudents.push(userData._id);
+          await courseData.save();
+        }
 
-      userData.enrolledCourses.push(courseData._id)
-      await userData.save()
+        // Check if course is already in user's enrolled courses
+        if (!userData.enrolledCourses.includes(courseData._id)) {
+          userData.enrolledCourses.push(courseData._id);
+          await userData.save();
+        }
 
-      purchaseData.status = 'completed'
-      await purchaseData.save()
+        purchaseData.status = 'completed';
+        await purchaseData.save();
+
+        console.log('Course enrollment completed successfully');
+      } catch (error) {
+        console.error('Error processing enrollment:', error);
+      }
 
       break;
     }
+    case 'checkout.session.expired':
     case 'payment_intent.payment_failed': {
-      const paymentIntent = event.data.object;
-      const paymentIntentId = paymentIntent.id;
+      const session = event.data.object;
+      let purchaseId;
 
-      // Getting Session Metadata
-      const session = await stripeInstance.checkout.sessions.list({
-        payment_intent: paymentIntentId,
-      });
+      if (event.type === 'checkout.session.expired') {
+        purchaseId = session.metadata.purchaseId;
+      } else {
+        // For payment_intent.payment_failed, we need to get the session
+        const paymentIntent = event.data.object;
+        const sessions = await stripeInstance.checkout.sessions.list({
+          payment_intent: paymentIntent.id,
+        });
+        purchaseId = sessions.data[0]?.metadata?.purchaseId;
+      }
 
-      const { purchaseId } = session.data[0].metadata;
+      if (purchaseId) {
+        try {
+          const purchaseData = await Purchase.findById(purchaseId);
+          if (purchaseData) {
+            purchaseData.status = 'failed';
+            await purchaseData.save();
+          }
+        } catch (error) {
+          console.error('Error updating failed purchase:', error);
+        }
+      }
 
-      const purchaseData = await Purchase.findById(purchaseId)
-      purchaseData.status = 'failed'
-      await purchaseData.save()
+      break;
+    }
+    case 'payment_intent.succeeded': {
+      // Keep this for backward compatibility, but the main logic is in checkout.session.completed
+      console.log('Payment succeeded for payment intent:', event.data.object.id);
 
       break;
     }

@@ -145,9 +145,14 @@ const CourseDetails = () => {
                           <div className="flex items-center justify-between w-full text-gray-800 text-xs md:text-default">
                             <p>{lecture.lectureTitle}</p>
                             <div className='flex gap-2'>
-                              {lecture.isPreviewFree && <p onClick={() => setPlayerData({
-                                videoId: lecture.lectureUrl.split('/').pop()
-                              })} className='text-blue-500 cursor-pointer'>Preview</p>}
+                              {lecture.isPreviewFree && lecture.lectureUrl && <p onClick={() => {
+                                const videoId = lecture.lectureUrl.includes('youtube.com/watch?v=') 
+                                  ? lecture.lectureUrl.split('v=')[1]?.split('&')[0]
+                                  : lecture.lectureUrl.includes('youtu.be/') 
+                                    ? lecture.lectureUrl.split('/').pop()?.split('?')[0]
+                                    : lecture.lectureUrl.split('/').pop();
+                                setPlayerData({ videoId });
+                              }} className='text-blue-500 cursor-pointer hover:underline'>Preview</p>}
                               <p>{humanizeDuration(lecture.lectureDuration * 60 * 1000, { units: ['h', 'm'] })}</p>
                             </div>
                           </div>
@@ -170,7 +175,27 @@ const CourseDetails = () => {
         <div className="max-w-course-card z-10 shadow-custom-card rounded-t md:rounded-none overflow-hidden bg-white min-w-[300px] sm:min-w-[420px]">
           {
             playerData
-              ? <YouTube videoId={playerData.videoId} opts={{ playerVars: { autoplay: 1 } }} iframeClassName='w-full aspect-video' />
+              ? (
+                <div className="relative">
+                  <YouTube 
+                    videoId={playerData.videoId} 
+                    opts={{ 
+                      playerVars: { 
+                        autoplay: 1,
+                        modestbranding: 1,
+                        rel: 0
+                      } 
+                    }} 
+                    iframeClassName='w-full aspect-video' 
+                  />
+                  <button 
+                    onClick={() => setPlayerData(null)}
+                    className="absolute top-2 right-2 bg-black bg-opacity-50 text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-opacity-75 transition-all"
+                  >
+                    ×
+                  </button>
+                </div>
+              )
               : <img src={courseData.courseThumbnail} alt="" />
           }
           <div className="p-5">
