@@ -192,3 +192,4 @@ export const stripeWebhooks = async (request, response) => {
   }
 
   response.json({ received: true });
+}
