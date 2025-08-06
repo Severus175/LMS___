@@ -153,12 +153,21 @@ const Player = ({ }) => {
                         <p>{lecture.lectureTitle}</p>
                         <div className='flex gap-2'>
                           {lecture.lectureUrl && <p onClick={() => {
-                            const videoId = lecture.lectureUrl.includes('youtube.com/watch?v=') 
-                              ? lecture.lectureUrl.split('v=')[1]?.split('&')[0]
-                              : lecture.lectureUrl.includes('youtu.be/') 
-                                ? lecture.lectureUrl.split('/').pop()?.split('?')[0]
-                                : lecture.lectureUrl.split('/').pop();
-                            setPlayerData({ ...lecture, videoId, chapter: index + 1, lecture: i + 1 });
+                            try {
+                              let videoId = '';
+                              if (lecture.lectureUrl.includes('youtube.com/watch?v=')) {
+                                videoId = lecture.lectureUrl.split('v=')[1]?.split('&')[0];
+                              } else if (lecture.lectureUrl.includes('youtu.be/')) {
+                                videoId = lecture.lectureUrl.split('/').pop()?.split('?')[0];
+                              } else if (lecture.lectureUrl.includes('youtube.com/embed/')) {
+                                videoId = lecture.lectureUrl.split('/embed/')[1]?.split('?')[0];
+                              }
+                              if (videoId) {
+                                setPlayerData({ ...lecture, videoId, chapter: index + 1, lecture: i + 1 });
+                              }
+                            } catch (error) {
+                              console.error('Error parsing video URL:', error);
+                            }
                           }} className='text-blue-500 cursor-pointer hover:underline'>Watch</p>}
                           <p>{humanizeDuration(lecture.lectureDuration * 60 * 1000, { units: ['h', 'm'] })}</p>
                         </div>
@@ -182,25 +191,45 @@ const Player = ({ }) => {
         {
           playerData
             ? (
-              <div>
+              <div className="bg-black rounded-lg overflow-hidden">
                 <YouTube 
                   iframeClassName='w-full aspect-video' 
-                  videoId={playerData.videoId || playerData.lectureUrl?.split('/').pop()} 
+                  videoId={playerData.videoId} 
                   opts={{
                     playerVars: {
                       autoplay: 1,
                       modestbranding: 1,
-                      rel: 0
+                      rel: 0,
+                      controls: 1
                     }
                   }}
+                  onError={(error) => {
+                    console.error('YouTube player error:', error);
+                  }}
                 />
-                <div className='flex justify-between items-center mt-1'>
+                <div className='flex justify-between items-center mt-4 px-2'>
                   <p className='text-xl '>{playerData.chapter}.{playerData.lecture} {playerData.lectureTitle}</p>
-                  <button onClick={() => markLectureAsCompleted(playerData.lectureId)} className='text-blue-600'>{progressData && progressData.lectureCompleted.includes(playerData.lectureId) ? 'Completed' : 'Mark Complete'}</button>
+                  <button 
+                    onClick={() => markLectureAsCompleted(playerData.lectureId)} 
+                    className={`px-4 py-2 rounded ${progressData && progressData.lectureCompleted.includes(playerData.lectureId) 
+                      ? 'bg-green-100 text-green-600' 
+                      : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
+                    } transition-colors`}
+                  >
+                    {progressData && progressData.lectureCompleted.includes(playerData.lectureId) ? 'Completed ✓' : 'Mark Complete'}
+                  </button>
                 </div>
               </div>
             )
-            : <img src={courseData ? courseData.courseThumbnail : ''} alt="" />
+            : (
+              <div className="bg-gray-100 rounded-lg overflow-hidden">
+                <img src={courseData ? courseData.courseThumbnail : ''} alt="" className="w-full aspect-video object-cover" />
+                <div className="p-4">
+                  <h3 className="text-lg font-semibold">{courseData?.courseTitle}</h3>
+                  <p className="text-gray-600 mt-2">Select a lecture to start watching</p>
+                </div>
+              </div>
+            )
         }
       </div>
     </div>

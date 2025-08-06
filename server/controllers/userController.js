@@ -27,14 +27,15 @@ export const getUserData = async (req, res) => {
 
 // Purchase Course 
 export const purchaseCourse = async (req, res) => {
-
     try {
-
         const { courseId } = req.body
         const { origin } = req.headers
 
-
         const userId = req.auth.userId
+
+        if (!courseId) {
+            return res.json({ success: false, message: 'Course ID is required' })
+        }
 
         const courseData = await Course.findById(courseId)
         const userData = await User.findById(userId)
@@ -43,47 +44,65 @@ export const purchaseCourse = async (req, res) => {
             return res.json({ success: false, message: 'Data Not Found' })
         }
 
+        // Check if user is already enrolled
+        if (userData.enrolledCourses.includes(courseId)) {
+            return res.json({ success: false, message: 'Already enrolled in this course' })
+        }
+
+        const finalPrice = courseData.coursePrice - (courseData.discount * courseData.coursePrice / 100);
+
         const purchaseData = {
             courseId: courseData._id,
             userId,
-            amount: (courseData.coursePrice - courseData.discount * courseData.coursePrice / 100).toFixed(2),
+            amount: Math.round(finalPrice * 100) / 100, // Round to 2 decimal places
         }
 
         const newPurchase = await Purchase.create(purchaseData)
 
+        console.log('Created purchase:', newPurchase._id, 'for user:', userId, 'course:', courseId);
+
         // Stripe Gateway Initialize
         const stripeInstance = new stripe(process.env.STRIPE_SECRET_KEY)
 
-        const currency = process.env.CURRENCY.toLocaleLowerCase()
+        const currency = (process.env.CURRENCY || 'USD').toLowerCase()
 
         // Creating line items to for Stripe
         const line_items = [{
             price_data: {
                 currency,
                 product_data: {
-                    name: courseData.courseTitle
+                    name: courseData.courseTitle,
+                    description: `Course by ${courseData.educator}`
                 },
-                unit_amount: Math.floor(newPurchase.amount) * 100
+                unit_amount: Math.round(newPurchase.amount * 100) // Convert to cents
             },
             quantity: 1
         }]
 
+        const successUrl = `${origin}/loading/my-enrollments`;
+        const cancelUrl = `${origin}/course/${courseId}`;
+
         const session = await stripeInstance.checkout.sessions.create({
-            success_url: `${origin}/loading/my-enrollments`,
-            cancel_url: `${origin}/`,
+            success_url: successUrl,
+            cancel_url: cancelUrl,
             line_items: line_items,
             mode: 'payment',
             payment_method_types: ['card'],
             metadata: {
-                purchaseId: newPurchase._id.toString()
+                purchaseId: newPurchase._id.toString(),
+                userId: userId,
+                courseId: courseId
             },
-            expires_at: Math.floor(Date.now() / 1000) + (30 * 60) // 30 minutes expiry
+            expires_at: Math.floor(Date.now() / 1000) + (30 * 60), // 30 minutes expiry
+            customer_email: userData.email
         })
+
+        console.log('Created Stripe session:', session.id, 'for purchase:', newPurchase._id);
 
         res.json({ success: true, session_url: session.url });
 
-
     } catch (error) {
+        console.error('Error in purchaseCourse:', error);
         res.json({ success: false, message: error.message });
     }
 }

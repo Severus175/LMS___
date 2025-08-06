@@ -90,7 +90,7 @@ const CourseDetails = () => {
   useEffect(() => {
 
     if (userData && courseData) {
-      setIsAlreadyEnrolled(userData.enrolledCourses.includes(courseData._id))
+      setIsAlreadyEnrolled(userData.enrolledCourses && userData.enrolledCourses.includes(courseData._id))
     }
 
   }, [userData, courseData])
@@ -146,12 +146,21 @@ const CourseDetails = () => {
                             <p>{lecture.lectureTitle}</p>
                             <div className='flex gap-2'>
                               {lecture.isPreviewFree && lecture.lectureUrl && <p onClick={() => {
-                                const videoId = lecture.lectureUrl.includes('youtube.com/watch?v=') 
-                                  ? lecture.lectureUrl.split('v=')[1]?.split('&')[0]
-                                  : lecture.lectureUrl.includes('youtu.be/') 
-                                    ? lecture.lectureUrl.split('/').pop()?.split('?')[0]
-                                    : lecture.lectureUrl.split('/').pop();
-                                setPlayerData({ videoId });
+                                try {
+                                  let videoId = '';
+                                  if (lecture.lectureUrl.includes('youtube.com/watch?v=')) {
+                                    videoId = lecture.lectureUrl.split('v=')[1]?.split('&')[0];
+                                  } else if (lecture.lectureUrl.includes('youtu.be/')) {
+                                    videoId = lecture.lectureUrl.split('/').pop()?.split('?')[0];
+                                  } else if (lecture.lectureUrl.includes('youtube.com/embed/')) {
+                                    videoId = lecture.lectureUrl.split('/embed/')[1]?.split('?')[0];
+                                  }
+                                  if (videoId) {
+                                    setPlayerData({ videoId, title: lecture.lectureTitle });
+                                  }
+                                } catch (error) {
+                                  console.error('Error parsing video URL:', error);
+                                }
                               }} className='text-blue-500 cursor-pointer hover:underline'>Preview</p>}
                               <p>{humanizeDuration(lecture.lectureDuration * 60 * 1000, { units: ['h', 'm'] })}</p>
                             </div>
@@ -176,17 +185,22 @@ const CourseDetails = () => {
           {
             playerData
               ? (
-                <div className="relative">
+                <div className="relative bg-black">
                   <YouTube 
                     videoId={playerData.videoId} 
                     opts={{ 
                       playerVars: { 
                         autoplay: 1,
                         modestbranding: 1,
-                        rel: 0
+                        rel: 0,
+                        controls: 1
                       } 
                     }} 
                     iframeClassName='w-full aspect-video' 
+                    onError={(error) => {
+                      console.error('YouTube player error:', error);
+                      setPlayerData(null);
+                    }}
                   />
                   <button 
                     onClick={() => setPlayerData(null)}
@@ -194,6 +208,11 @@ const CourseDetails = () => {
                   >
                     ×
                   </button>
+                  {playerData.title && (
+                    <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white p-2 text-sm">
+                      {playerData.title}
+                    </div>
+                  )}
                 </div>
               )
               : <img src={courseData.courseThumbnail} alt="" />

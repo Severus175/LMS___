@@ -72,27 +72,46 @@ const stripeInstance = new stripe(process.env.STRIPE_SECRET_KEY)
 // Stripe Webhooks to Manage Payments Action
 export const stripeWebhooks = async (request, response) => {
   const sig = request.headers['stripe-signature'];
+  
+  if (!sig) {
+    console.error('No stripe signature found');
+    return response.status(400).send('No signature');
+  }
 
   let event;
 
   try {
     event = stripeInstance.webhooks.constructEvent(request.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
-  }
-  catch (err) {
+  } catch (err) {
+    console.error('Webhook signature verification failed:', err.message);
     response.status(400).send(`Webhook Error: ${err.message}`);
+    return;
   }
+
+  console.log('Received webhook event:', event.type);
 
   // Handle the event
   switch (event.type) {
     case 'checkout.session.completed': {
-
       const session = event.data.object;
       const { purchaseId } = session.metadata;
+
+      console.log('Processing checkout.session.completed for purchase:', purchaseId);
+
+      if (!purchaseId) {
+        console.error('No purchaseId in session metadata');
+        break;
+      }
 
       try {
         const purchaseData = await Purchase.findById(purchaseId);
         if (!purchaseData) {
           console.error('Purchase not found:', purchaseId);
+          break;
+        }
+
+        if (purchaseData.status === 'completed') {
+          console.log('Purchase already completed:', purchaseId);
           break;
         }
 
@@ -103,6 +122,8 @@ export const stripeWebhooks = async (request, response) => {
           console.error('User or Course not found');
           break;
         }
+
+        console.log('Enrolling user:', userData.name, 'in course:', courseData.courseTitle);
 
         // Check if user is already enrolled
         if (!courseData.enrolledStudents.includes(userData._id)) {
@@ -116,6 +137,7 @@ export const stripeWebhooks = async (request, response) => {
           await userData.save();
         }
 
+        // Update purchase status
         purchaseData.status = 'completed';
         await purchaseData.save();
 
@@ -123,9 +145,9 @@ export const stripeWebhooks = async (request, response) => {
       } catch (error) {
         console.error('Error processing enrollment:', error);
       }
-
       break;
     }
+    
     case 'checkout.session.expired':
     case 'payment_intent.payment_failed': {
       const session = event.data.object;
@@ -134,12 +156,15 @@ export const stripeWebhooks = async (request, response) => {
       if (event.type === 'checkout.session.expired') {
         purchaseId = session.metadata.purchaseId;
       } else {
-        // For payment_intent.payment_failed, we need to get the session
-        const paymentIntent = event.data.object;
-        const sessions = await stripeInstance.checkout.sessions.list({
-          payment_intent: paymentIntent.id,
-        });
-        purchaseId = sessions.data[0]?.metadata?.purchaseId;
+        try {
+          const paymentIntent = event.data.object;
+          const sessions = await stripeInstance.checkout.sessions.list({
+            payment_intent: paymentIntent.id,
+          });
+          purchaseId = sessions.data[0]?.metadata?.purchaseId;
+        } catch (error) {
+          console.error('Error getting session for failed payment:', error);
+        }
       }
 
       if (purchaseId) {
@@ -148,24 +173,22 @@ export const stripeWebhooks = async (request, response) => {
           if (purchaseData) {
             purchaseData.status = 'failed';
             await purchaseData.save();
+            console.log('Marked purchase as failed:', purchaseId);
           }
         } catch (error) {
           console.error('Error updating failed purchase:', error);
         }
       }
-
       break;
     }
+    
     case 'payment_intent.succeeded': {
-      // Keep this for backward compatibility, but the main logic is in checkout.session.completed
       console.log('Payment succeeded for payment intent:', event.data.object.id);
-
       break;
     }
+    
     default:
       console.log(`Unhandled event type ${event.type}`);
   }
 
-  // Return a response to acknowledge receipt of the event
   response.json({ received: true });
-}
